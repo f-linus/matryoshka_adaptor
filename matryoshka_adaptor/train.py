@@ -12,7 +12,7 @@ from matryoshka_adaptor.model import MatryoshkaAdaptor
 logger = logging.getLogger(__name__)
 
 
-def training_loop_combined(
+def training_loop(
     corpus: datasets.Dataset,
     queries: datasets.Dataset,
     associations: datasets.Dataset,
@@ -37,7 +37,7 @@ def training_loop_combined(
     # unsupervised training
     step = 0
     for epoch in range(n_epochs_unsupervised):
-        for corpus_embeddings, _, _, _ in batch_iterator_combined(
+        for corpus_embeddings, _, _, _ in batch_iterator(
             corpus=corpus,
             queries=queries,
             associations=associations,
@@ -81,7 +81,7 @@ def training_loop_combined(
             query_embeddings,
             document_embeddings,
             scores,
-        ) in batch_iterator_combined(
+        ) in batch_iterator(
             corpus=corpus,
             queries=queries,
             associations=associations,
@@ -134,7 +134,7 @@ def training_loop_combined(
     return loss_trajectory_unsupervised, loss_trajectory_supervised
 
 
-def batch_iterator_combined(
+def batch_iterator(
     corpus: datasets.Dataset,
     queries: datasets.Dataset,
     associations: datasets.Dataset,

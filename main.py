@@ -6,7 +6,7 @@ import torch
 from sentence_transformers import SentenceTransformer
 
 from matryoshka_adaptor.model import MatryoshkaAdaptor
-from matryoshka_adaptor.train import training_loop_combined
+from matryoshka_adaptor.train import training_loop
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
     optimizer = torch.optim.Adam(adaptor.parameters(), lr=learning_rate)
 
-    training_loop_combined(
+    training_loop(
         corpus=corpus,
         queries=queries,
         associations=associations,
