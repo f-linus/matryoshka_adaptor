@@ -2,10 +2,15 @@ import json
 import logging
 import os
 
+import matplotlib.pyplot as plt
 import mteb
 import ptvsd
 import torch
-from model import MatryoshkaAdaptor
+from model import (
+    AdaptedSentenceTransformer,
+    MatryoshkaAdaptor,
+    SentenceTransformerTruncated,
+)
 from sentence_transformers import SentenceTransformer
 
 MTEB_BEIR_TASKS = [
@@ -32,47 +37,17 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 logger = logging.getLogger(__name__)
 
 
-class SentenceTransformerTruncated:
-    def __init__(self, model, embedding_length):
-        self.model = model
-        self.prompts = model.prompts  # unfortunately this is necessary
-        self.embedding_length = embedding_length
-
-    def encode(self, sentences, **kwargs):
-        embeddings = self.model.encode(sentences, **kwargs)
-        return embeddings[:, : self.embedding_length]
-
-
-class AdaptedSentenceTransformer:
-    def __init__(self, model, adaptor, embedding_length):
-        self.model = model
-        self.prompts = model.prompts
-        self.adaptor = adaptor
-        self.embedding_length = embedding_length
-
-    def encode(self, sentences, **kwargs):
-        embeddings_original = self.model.encode(sentences, **kwargs)
-        embeddings_adapted = embeddings_original + self.adaptor.forward(
-            embeddings_original
-        )
-        return embeddings_adapted[:, : self.embedding_length]
-
-
 def multiple_embedding_dimensionalities_eval(
     model,
     model_string,
     tasks=MTEB_BEIR_TASKS,
-    full_embedding_dimensionality=384,
-    dimensionality_reduction_steps=50,
+    encoding_batch_size=1200,
+    embedding_dimensionalities=[16, 32, 64, 128, 192, 256, 320, 384],
 ) -> dict:
-    embedding_dimensionalities = range(
-        full_embedding_dimensionality, 0, -dimensionality_reduction_steps
-    )
-
     # check if some file with results already exists
     eval_results = {}
-    if os.path.exists(f"{model_string}_eval.json"):
-        eval_results = json.load(open(f"{model_string}_eval.json"))
+    if os.path.exists(f"eval_{model_string}.json"):
+        eval_results = json.load(open(f"eval_{model_string}.json"))
 
     logger.info(
         f"Eval {model_string} with {tasks} on {embedding_dimensionalities} truncations ..."
@@ -94,27 +69,85 @@ def multiple_embedding_dimensionalities_eval(
             mteb_tasks = mteb.get_tasks(tasks=[task])
 
             evaluation = mteb.MTEB(tasks=mteb_tasks)
+
+            # to align with original MTEB procedure
+            if task == "MSMARCO":
+                split = "dev"
+            else:
+                split = "test"
+
             results = evaluation.run(
                 model_truncated,
                 output_folder=f"results/{model_string}/{dimensionality}",
-                eval_splits=["test"],
+                eval_splits=[split],
+                encode_kwargs={"batch_size": encoding_batch_size},
+                overwrite_existing_files=True,
             )
 
             for task in results:
-                eval_results[str(dimensionality)][task.task_name] = task.scores["test"][
+                eval_results[str(dimensionality)][task.task_name] = task.scores[split][
                     0
                 ]["ndcg_at_10"]
 
-            with open(f"{model_string}_eval.json", "w") as f:
+            with open(f"eval_{model_string}.json", "w") as f:
                 json.dump(eval_results, f, indent=4)
 
     logger.info(f"Eval results: {eval_results}")
     return eval_results
 
 
+def plot_task_performances(eval_results, labels, tasks: list, figsize=(14, 4)):
+    fig, axes = plt.subplots(1, len(tasks), figsize=figsize)
+    colors = ["red", "blue", "green", "orange", "purple"]
+
+    for task in tasks:
+        if len(tasks) > 1:
+            ax = axes[tasks.index(task)]
+        else:
+            ax = axes
+
+        for i, eval_result in enumerate(eval_results):
+            x_axis = []
+            y_axis = []
+
+            for dimensionality in eval_result:
+                if task not in eval_result[dimensionality]:
+                    continue
+
+                x_axis.append(int(dimensionality))
+                y_axis.append(eval_result[dimensionality][task])
+
+                # annotate score
+                ax.annotate(
+                    f"{eval_result[dimensionality][task]:.3f}",
+                    (int(dimensionality), eval_result[dimensionality][task]),
+                    textcoords="offset points",
+                    xytext=(0, 10),
+                    ha="center",
+                    fontsize=8,
+                )
+
+            # sort x and y
+            x_axis, y_axis = zip(*sorted(zip(x_axis, y_axis)))
+
+            ax.plot(x_axis, y_axis, color=colors[i], label=labels[i])
+
+        ax.set_xticks(x_axis)
+        ax.set_xticklabels(x_axis, rotation=90)
+        ax.set_title(task)
+        ax.grid(True)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+
+        ax.set_xlabel("Embedding Dimensionality")
+        ax.set_ylabel("NDCG@10")
+        ax.legend()
+
+    fig.tight_layout()
+    return fig
+
+
 debug_mode = False
-model_string = "sentence-transformers/all-MiniLM-L6-v2"
-embedding_dim_full = 384
 
 if debug_mode:
     print("Waiting for debugger to attach...")
@@ -122,22 +155,55 @@ if debug_mode:
     ptvsd.wait_for_attach()
 
 
+model_string = "sentence-transformers/all-MiniLM-L6-v2"
+embedding_dim_full = 384
+adaptors_to_evaluate = [
+    "adaptor_supervised.pt",
+    "adaptor.pt",
+]
+dimensionalities_to_evaluate = [16, 32, 64, 128, 192, 256, 320, 384]
+tasks = ["HotpotQA"]
+
 if __name__ == "__main__":
     logging.getLogger("mteb").setLevel(logging.INFO)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # load adapter from adaptor.pt
-    adaptor = MatryoshkaAdaptor(embedding_dim_full)
-    adaptor.load_state_dict(torch.load("adaptor.pt"))
-    adaptor.eval()
-    adaptor.to(device)
-
     model = SentenceTransformer(model_string)
     model.to(device)
-    model_adapted = AdaptedSentenceTransformer(model, adaptor, embedding_dim_full)
 
-    eval_results = multiple_embedding_dimensionalities_eval(
-        model_adapted, "adapted", tasks=["MSMARCO"]
+    # eval for original model
+    eval_results_original = multiple_embedding_dimensionalities_eval(
+        model,
+        "original",
+        tasks=tasks,
+        embedding_dimensionalities=dimensionalities_to_evaluate,
     )
 
-    print(eval_results)
+    # eval for adapted models
+    eval_results_adapted = []
+    for adaptor_file in adaptors_to_evaluate:
+        # load adapter from adaptor.pt
+        adaptor = MatryoshkaAdaptor(embedding_dim_full)
+        adaptor.load_state_dict(torch.load(adaptor_file))
+        adaptor.eval()
+        adaptor.to(device)
+        model_adapted = AdaptedSentenceTransformer(model, adaptor, embedding_dim_full)
+
+        # eval for adapted model
+        eval_results_adapted.append(
+            multiple_embedding_dimensionalities_eval(
+                model_adapted,
+                adaptor_file,
+                tasks=tasks,
+                embedding_dimensionalities=dimensionalities_to_evaluate,
+            )
+        )
+
+    # plot results
+    fig = plot_task_performances(
+        [eval_results_original] + eval_results_adapted,
+        ["original"] + adaptors_to_evaluate,
+        tasks,
+        figsize=(6, 4),
+    )
+    fig.savefig("eval_results.png", dpi=300)
