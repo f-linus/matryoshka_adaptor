@@ -70,95 +70,89 @@ def unsupervised_loss(
     return first_loss_term + alpha * second_loss_term + beta * third_loss_term
 
 
+import torch
+import torch.nn.functional as F
+
+
 def rank_loss(
-    query_embeddings_adapted: torch.tensor,
-    document_embeddings_adapted: torch.tensor,
-    scores_batched: torch.tensor,
+    query_embeddings_adapted: torch.Tensor,
+    document_embeddings_adapted: torch.Tensor,
+    scores_batched: torch.Tensor,
 ):
     device = query_embeddings_adapted.device
-    batch_size = query_embeddings_adapted.shape[0]
-    max_embedding_dim = query_embeddings_adapted.shape[1]
+    batch_size, max_embedding_dim = query_embeddings_adapted.shape
+    num_documents = document_embeddings_adapted.shape[1]
 
-    loss_sum = 0
+    # Create relevancy mask and diff matrix for the entire batch
+    relevancy_mask = scores_batched.unsqueeze(1) > scores_batched.unsqueeze(2)
+    diff_matrix = scores_batched.unsqueeze(1) - scores_batched.unsqueeze(2)
 
-    # we iterate over the batch (i.e. all queries)
-    for i in range(batch_size):
-        query_embedding = query_embeddings_adapted[i]
-        document_embeddings = document_embeddings_adapted[i]
-        scores = scores_batched[i]
+    # Create flipped triangular matrix
+    flipped_triangular = torch.flip(
+        torch.tril(torch.ones(max_embedding_dim, max_embedding_dim, device=device)),
+        dims=(0,),
+    )
 
-        # this represents the indicator funciton in the loss term
-        relevancy_mask = scores.unsqueeze(0) > scores.unsqueeze(1)
+    # Expand query embeddings for different truncation levels
+    query_embedding_truncation_matrix = query_embeddings_adapted.unsqueeze(1).expand(
+        batch_size, max_embedding_dim, max_embedding_dim
+    )
+    query_embedding_truncation_matrix = (
+        query_embedding_truncation_matrix * flipped_triangular
+    )
 
-        # this represents the difference between the scores, that we use to scale the rank loss
-        # for MSMarco this will be irrelavent since equal to the relevancy mask (due to scores being 0 or 1)
-        diff_matrix = scores.unsqueeze(0) - scores.unsqueeze(1)
+    # Expand document embeddings for different truncation levels
+    mask = flipped_triangular.repeat_interleave(num_documents, dim=0).reshape(
+        max_embedding_dim, num_documents, max_embedding_dim
+    )
+    document_embeddings_truncation_tensor = document_embeddings_adapted.unsqueeze(
+        1
+    ).expand(batch_size, max_embedding_dim, num_documents, max_embedding_dim)
+    document_embeddings_truncation_tensor = document_embeddings_truncation_tensor * mask
 
-        # here we need to compute the cosine similarities at different truncation levels
-        flipped_triangular = torch.flip(
-            torch.tril(torch.ones(max_embedding_dim, max_embedding_dim, device=device)),
-            dims=(0,),
+    # Normalize
+    query_embedding_truncation_matrix_norm = F.normalize(
+        query_embedding_truncation_matrix, dim=2, p=2.0
+    )
+    document_embeddings_truncation_tensor_norm = F.normalize(
+        document_embeddings_truncation_tensor, dim=3, p=2.0
+    )
+
+    # Compute cosine similarities using batched matrix multiplication
+    query_embedding_truncation_matrix_norm = (
+        query_embedding_truncation_matrix_norm.view(
+            batch_size * max_embedding_dim, 1, max_embedding_dim
         )
-
-        # expand query embeddings for different truncation levels
-        query_embedding_truncation_matrix = query_embedding.expand(
-            max_embedding_dim, -1
+    )
+    document_embeddings_truncation_tensor_norm = (
+        document_embeddings_truncation_tensor_norm.view(
+            batch_size * max_embedding_dim, num_documents, max_embedding_dim
         )
-        query_embedding_truncation_matrix = (
-            query_embedding_truncation_matrix * flipped_triangular
-        )
+    )
+    cosine_similarities = torch.bmm(
+        query_embedding_truncation_matrix_norm,
+        document_embeddings_truncation_tensor_norm.transpose(1, 2),
+    ).view(batch_size, max_embedding_dim, num_documents)
 
-        # expand document embeddings for different truncation levels
-        mask = flipped_triangular.repeat_interleave(
-            document_embeddings.shape[0], dim=0
-        ).reshape(max_embedding_dim, -1, max_embedding_dim)
+    # Compute pairwise cosine differences
+    pairwise_cosim_differences = cosine_similarities.unsqueeze(
+        3
+    ) - cosine_similarities.unsqueeze(2)
 
-        document_embeddings_truncation_tensor = (
-            document_embeddings.expand(
-                max_embedding_dim, document_embeddings.shape[0], -1
-            )
-            * mask
-        )
+    # Apply log(1 + exp(x))
+    pairwise_cosim_differences = torch.log(1 + torch.exp(pairwise_cosim_differences))
 
-        # normalise
-        query_embedding_truncation_matrix_norm = F.normalize(
-            query_embedding_truncation_matrix, dim=1, p=2.0
-        )
-        document_embeddings_truncation_tensor_norm = F.normalize(
-            document_embeddings_truncation_tensor, dim=2, p=2.0
-        )
+    # Expand relevancy and difference matrices
+    relevancy_mask_expanded = relevancy_mask.unsqueeze(1).expand_as(
+        pairwise_cosim_differences
+    )
+    diff_matrix_expanded = diff_matrix.unsqueeze(1).expand_as(
+        pairwise_cosim_differences
+    )
 
-        query_embedding_truncation_matrix_norm = (
-            query_embedding_truncation_matrix_norm.reshape(
-                max_embedding_dim, 1, max_embedding_dim
-            )
-        )
-        cosine_similarities = torch.bmm(
-            query_embedding_truncation_matrix_norm,
-            document_embeddings_truncation_tensor_norm.transpose(1, 2),
-        ).reshape(max_embedding_dim, document_embeddings.shape[0])
+    # Compute final loss
+    loss = (
+        relevancy_mask_expanded * diff_matrix_expanded * pairwise_cosim_differences
+    ).sum()
 
-        # TODO: check if the order is correct here
-        pairwise_cosim_differences = cosine_similarities.unsqueeze(
-            2
-        ) - cosine_similarities.unsqueeze(1)
-
-        # log(1 + exp(x))
-        pairwise_cosim_differences = torch.log(
-            1 + torch.exp(pairwise_cosim_differences)
-        )
-
-        # expand the relevancy andd difference matrix to all truncation levels
-        relevancy_mask_expanded = relevancy_mask.unsqueeze(0).expand_as(
-            pairwise_cosim_differences
-        )
-        diff_matrix_expanded = diff_matrix.unsqueeze(0).expand_as(
-            pairwise_cosim_differences
-        )
-
-        # aggregate over truncation levels
-        loss_sum += (
-            relevancy_mask_expanded * diff_matrix_expanded * pairwise_cosim_differences
-        ).sum()
-
-    return loss_sum
+    return loss
