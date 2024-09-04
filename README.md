@@ -33,6 +33,16 @@ matryoshka_adaptor/
 - mteb: evaluation framework
 - ptvsd: debugging
 
+
+## Quickstart
+
+```bash
+pip install -r requirements.txt
+python main.py
+```
+
+This will run the current config defined in `main.py` (training on HotpotQA). Tested on a GH200 superchip and a Vast.ai machine with A100, AMD EPYC 7J13 64-Core Processor and 256 GB RAM.
+
 ### Saved models
 
 Both the unsupervised and supervised trained adaptor on SciFact are included in the repository and can evaluated (see `matryoshka_adaptor/eval.py`).
