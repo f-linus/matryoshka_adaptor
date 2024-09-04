@@ -23,8 +23,8 @@ model_string = "sentence-transformers/all-MiniLM-L6-v2"
 
 dataset = "mteb/hotpotqa"
 
-n_epochs_unsupervised = 2
-n_epochs_supervised = 10
+n_epochs_unsupervised = 0
+n_epochs_supervised = 6
 
 k = 20
 learning_rate = 0.00001
@@ -50,7 +50,7 @@ if __name__ == "__main__":
     adaptor = MatryoshkaAdaptor(embedding_dim_full)
 
     # load model from adaptor.pt
-    # adaptor.load_state_dict(torch.load("adaptor_nfcorpus_supervised.pt"))
+    adaptor.load_state_dict(torch.load("adaptor_hotpotqa_supervised.pt"))
     adaptor.to(device)
 
     training_loop(
@@ -71,3 +71,4 @@ if __name__ == "__main__":
         learning_rate_supervised=learning_rate / 20,
         gamma=10,
     )
+4
