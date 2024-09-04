@@ -47,13 +47,15 @@ This will run the current config defined in `main.py` (training on HotpotQA). Te
 
 Both the unsupervised and supervised trained adaptor on SciFact are included in the repository and can evaluated (see `matryoshka_adaptor/eval.py`).
 
-## SciFact evaluation
+## Evaluation
 
 For the experiment below the `sentence-transformers/all-MiniLM-L6-v2` model was used. The trained adaptor is a shallow multi layer perceptron yielding performances shown below in the supervised and unsupervised setting respectively.
 
 The experiment has been conducted on a GH200 chip, re-running the experiment might require the adaption of batch sizes and other parameters.
 
-![SciFact](plots/eval_results_scifact.png)
+Training and evaluation have been performed both on the SciFact and HotpotQA dataset.
+
+![Evaluation results](plots/eval_plots_combined.png)
 
 ## References
 
