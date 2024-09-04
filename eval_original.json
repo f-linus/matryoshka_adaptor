@@ -1,0 +1,45 @@
+{
+    "16": {
+        "HotpotQA": 0.01317,
+        "NFCorpus": 0.07132,
+        "SciFact": 0.158
+    },
+    "32": {
+        "MSMARCO": 0.19074,
+        "HotpotQA": 0.09779,
+        "NFCorpus": 0.13438,
+        "SciFact": 0.33707
+    },
+    "64": {
+        "MSMARCO": 0.29311,
+        "HotpotQA": 0.25431,
+        "NFCorpus": 0.2107,
+        "SciFact": 0.48421
+    },
+    "128": {
+        "MSMARCO": 0.33685,
+        "HotpotQA": 0.37757,
+        "NFCorpus": 0.27346,
+        "SciFact": 0.60156
+    },
+    "192": {
+        "HotpotQA": 0.41888,
+        "NFCorpus": 0.28926,
+        "SciFact": 0.61425
+    },
+    "256": {
+        "HotpotQA": 0.44508,
+        "NFCorpus": 0.30207,
+        "SciFact": 0.63493
+    },
+    "320": {
+        "HotpotQA": 0.45795,
+        "NFCorpus": 0.30744,
+        "SciFact": 0.64947
+    },
+    "384": {
+        "HotpotQA": 0.46506,
+        "NFCorpus": 0.31593,
+        "SciFact": 0.64508
+    }
+}
