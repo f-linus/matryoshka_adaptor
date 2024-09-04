@@ -81,7 +81,7 @@ def multiple_embedding_dimensionalities_eval(
                 output_folder=f"results/{model_string}/{dimensionality}",
                 eval_splits=[split],
                 encode_kwargs={"batch_size": encoding_batch_size},
-                overwrite_existing_files=True,
+                overwrite_results=True,
             )
 
             for task in results:
@@ -120,11 +120,12 @@ def plot_task_performances(eval_results, labels, tasks: list, figsize=(14, 4)):
                 # annotate score
                 ax.annotate(
                     f"{eval_result[dimensionality][task]:.3f}",
-                    (int(dimensionality), eval_result[dimensionality][task]),
+                    (int(dimensionality), i * 0.018),
                     textcoords="offset points",
-                    xytext=(0, 10),
+                    xytext=(0, 4),
                     ha="center",
-                    fontsize=8,
+                    fontsize=5,
+                    color=colors[i],
                 )
 
             # sort x and y
@@ -141,7 +142,10 @@ def plot_task_performances(eval_results, labels, tasks: list, figsize=(14, 4)):
 
         ax.set_xlabel("Embedding Dimensionality")
         ax.set_ylabel("NDCG@10")
-        ax.legend()
+
+        ax.set_ylim(0)
+
+        ax.legend(loc="center right", bbox_to_anchor=(1, 0.5))
 
     fig.tight_layout()
     return fig
@@ -158,11 +162,12 @@ if debug_mode:
 model_string = "sentence-transformers/all-MiniLM-L6-v2"
 embedding_dim_full = 384
 adaptors_to_evaluate = [
-    "adaptor_supervised.pt",
-    "adaptor.pt",
+    "adaptor_hotpotqa_unsupervised.pt",
+    "adaptor_hotpotqa_supervised.pt",
 ]
 dimensionalities_to_evaluate = [16, 32, 64, 128, 192, 256, 320, 384]
 tasks = ["HotpotQA"]
+eval_results_plot_file = "plots/eval_results_hotpotqa.png"
 
 if __name__ == "__main__":
     logging.getLogger("mteb").setLevel(logging.INFO)
@@ -206,4 +211,4 @@ if __name__ == "__main__":
         tasks,
         figsize=(6, 4),
     )
-    fig.savefig("eval_results.png", dpi=300)
+    fig.savefig(eval_results_plot_file, dpi=300)

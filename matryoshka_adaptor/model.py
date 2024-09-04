@@ -4,21 +4,46 @@ from torch import nn
 
 
 class MatryoshkaAdaptor(nn.Module):
-    def __init__(self, original_embedding_dim: int):
+    def __init__(self, original_embedding_dim: int, dropout_rate: float = 0.1):
         super().__init__()
         self.original_embedding_dim = original_embedding_dim
 
         # preliminary design
-        self.linear1 = nn.Linear(original_embedding_dim, 2 * original_embedding_dim)
-        self.linear2 = nn.Linear(2 * original_embedding_dim, original_embedding_dim)
+        self.layer1 = nn.Sequential(
+            nn.Linear(original_embedding_dim, 2 * original_embedding_dim),
+            nn.LayerNorm(2 * original_embedding_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout_rate),
+        )
+        self.layer2 = nn.Sequential(
+            nn.Linear(2 * original_embedding_dim, 2 * original_embedding_dim),
+            nn.LayerNorm(2 * original_embedding_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout_rate),
+        )
 
-        self.relu = nn.ReLU()
+        self.layer3 = nn.Sequential(
+            nn.Linear(2 * original_embedding_dim, 2 * original_embedding_dim),
+            nn.LayerNorm(2 * original_embedding_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout_rate),
+        )
+
+        self.layer4 = nn.Sequential(
+            nn.Linear(2 * original_embedding_dim, 2 * original_embedding_dim),
+            nn.LayerNorm(2 * original_embedding_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout_rate),
+        )
+
+        self.layer5 = nn.Linear(2 * original_embedding_dim, original_embedding_dim)
 
     def forward(self, original_embeddings: torch.Tensor):
-        delta = self.linear1(original_embeddings)
-        delta = self.relu(delta)
-        delta = self.linear2(delta)
-        return delta
+        x = self.layer1(original_embeddings)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+        return self.layer5(x)
 
 
 class SentenceTransformerTruncated:

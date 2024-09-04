@@ -18,7 +18,6 @@ def training_loop(
     associations: datasets.Dataset,
     original_model: SentenceTransformer,
     adaptor_model: MatryoshkaAdaptor,
-    optimizer: torch.optim.Optimizer,
     n_epochs_unsupervised: int = 5,
     n_epochs_supervised: int = 5,
     query_batch_size: int = 1024,
@@ -30,9 +29,16 @@ def training_loop(
     unsupervised_learning_model_file="adaptor_unsupervised.pt",
     supervised_learning_model_file="adaptor_supervised.pt",
     loss_curve_file="loss_curve.png",
+    learning_rate_unsupervised: float = 0.001,
+    learning_rate_supervised: float = 0.001,
+    gamma=100,
 ):
     loss_trajectory_unsupervised = []
     loss_trajectory_supervised = []
+
+    optimizer = torch.optim.Adam(
+        adaptor_model.parameters(), lr=learning_rate_unsupervised
+    )
 
     # unsupervised training
     step = 0
@@ -68,10 +74,14 @@ def training_loop(
             step += 1
 
     # save model
-    torch.save(adaptor_model.state_dict(), unsupervised_learning_model_file)
-    logger.info(f"Unsupervised model saved to {unsupervised_learning_model_file}")
+    if n_epochs_unsupervised > 0:
+        torch.save(adaptor_model.state_dict(), unsupervised_learning_model_file)
+        logger.info(f"Unsupervised model saved to {unsupervised_learning_model_file}")
 
-    # TODO: reset optimizer (?)
+    # reset optimizer
+    optimizer = torch.optim.Adam(
+        adaptor_model.parameters(), lr=learning_rate_supervised
+    )
 
     # supervised training
     step = 0
@@ -101,9 +111,14 @@ def training_loop(
             document_embeddings_adapted = adaptor_model.forward(document_embeddings)
 
             # loss
-            loss = rank_loss(
+            rank_loss_value = gamma * rank_loss(
                 query_embeddings_adapted, document_embeddings_adapted, scores
-            ) + unsupervised_loss(corpus_embeddings, corpus_embeddings_new)
+            )
+            unsupervised_loss_value = unsupervised_loss(
+                corpus_embeddings, corpus_embeddings_new
+            )
+
+            loss = rank_loss_value + unsupervised_loss_value
             loss_trajectory_supervised.append(loss.item())
 
             # optimizer step
@@ -114,7 +129,7 @@ def training_loop(
             # log
             if step % log_interval == 0:
                 logger.info(
-                    f"Supervised epoch {epoch+1}/{n_epochs_supervised}, step {step}: Loss: {loss.item()}"
+                    f"Supervised epoch {epoch+1}/{n_epochs_supervised}, step {step}: Loss: {loss.item()}, (rank: {rank_loss_value.item()}, unsupervised: {unsupervised_loss_value.item()})"
                 )
 
             step += 1
@@ -146,8 +161,8 @@ def batch_iterator(
     encoding_batch_size: int = 512,
 ):
     # shuffle queries and corpus
-    queries = queries.shuffle(seed=0)
-    corpus = corpus.shuffle(seed=0)
+    queries = queries.shuffle()
+    corpus = corpus.shuffle()
 
     # if query batch size > 0, create dataframes to efficiently select pairs
     if query_batch_size > 0:
@@ -191,7 +206,10 @@ def batch_iterator(
                     "text_query": query_batch["text_query"].to_list()
                     * n_non_matching_augmentations,
                     "text": associations_df["text"]
-                    .sample(n=len(query_batch) * n_non_matching_augmentations)
+                    .sample(
+                        n=len(query_batch) * n_non_matching_augmentations,
+                        replace=True,
+                    )
                     .to_list(),
                 }
             )

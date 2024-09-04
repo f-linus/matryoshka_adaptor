@@ -70,10 +70,6 @@ def unsupervised_loss(
     return first_loss_term + alpha * second_loss_term + beta * third_loss_term
 
 
-import torch
-import torch.nn.functional as F
-
-
 def rank_loss(
     query_embeddings_adapted: torch.Tensor,
     document_embeddings_adapted: torch.Tensor,

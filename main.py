@@ -24,15 +24,18 @@ model_string = "sentence-transformers/all-MiniLM-L6-v2"
 dataset = "mteb/hotpotqa"
 
 n_epochs_unsupervised = 2
-n_epochs_supervised = 5
+n_epochs_supervised = 10
 
 k = 20
-learning_rate = 0.0001
+learning_rate = 0.00001
 
-query_batch_size = 1024
-n_non_matching_augmentations = 9
-corpus_batch_size = 1024
+query_batch_size = 800
+n_non_matching_augmentations = 4
+corpus_batch_size = 256
 encoding_batch_size = 512
+
+unsupervised_learning_model_file = "adaptor_hotpotqa_unsupervised.pt"
+supervised_learning_model_file = "adaptor_hotpotqa_supervised.pt"
 
 
 if __name__ == "__main__":
@@ -45,9 +48,10 @@ if __name__ == "__main__":
 
     original_model = SentenceTransformer(model_string)
     adaptor = MatryoshkaAdaptor(embedding_dim_full)
-    adaptor.to(device)
 
-    optimizer = torch.optim.Adam(adaptor.parameters(), lr=learning_rate)
+    # load model from adaptor.pt
+    # adaptor.load_state_dict(torch.load("adaptor_nfcorpus_supervised.pt"))
+    adaptor.to(device)
 
     training_loop(
         corpus=corpus,
@@ -55,11 +59,15 @@ if __name__ == "__main__":
         associations=associations,
         original_model=original_model,
         adaptor_model=adaptor,
-        optimizer=optimizer,
         n_epochs_unsupervised=n_epochs_unsupervised,
         n_epochs_supervised=n_epochs_supervised,
         query_batch_size=query_batch_size,
         corpus_batch_size=corpus_batch_size,
         n_non_matching_augmentations=n_non_matching_augmentations,
         encoding_batch_size=encoding_batch_size,
+        unsupervised_learning_model_file=unsupervised_learning_model_file,
+        supervised_learning_model_file=supervised_learning_model_file,
+        learning_rate_unsupervised=learning_rate,
+        learning_rate_supervised=learning_rate / 20,
+        gamma=10,
     )
