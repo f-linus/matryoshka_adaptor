@@ -1,3 +1,5 @@
 container_python.sh
 .vscode/*
 results/*
+loss_curve.png
+*/__pycache__/*
