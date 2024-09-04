@@ -1,0 +1,7 @@
+torch
+sentence-transformers
+datasets
+pandas
+matplotlib
+mteb
+ptvsd
